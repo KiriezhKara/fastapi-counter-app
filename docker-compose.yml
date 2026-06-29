@@ -98,4 +98,4 @@ volumes:
   postgres_data:
     name: fastapi-postgres-data
   redis_data:
-    name: fastapi-redis-data
+    name: fastapi-redis-data"# Admin panels configuration" 
