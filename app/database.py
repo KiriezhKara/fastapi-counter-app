@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError
 import time
@@ -33,7 +33,7 @@ def init_db():
             
             # Проверка подключения
             with engine.connect() as conn:
-                conn.execute("SELECT 1")
+                conn.execute(text("SELECT 1"))
             
             logger.info(f"Successfully connected to database on attempt {attempt + 1}")
             return True
