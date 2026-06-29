@@ -112,5 +112,3 @@ jobs:
         echo "Deploying to production environment..."
         echo "Using docker-compose.prod.yml"
         echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-        # Здесь можно добавить реальные команды деплоя
-        # Например: scp, ssh, kubectl и т.д.
