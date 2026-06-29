@@ -43,17 +43,26 @@ jobs:
           app:test
         sleep 5
     
-    - name: Install curl in container
+    - name: Check container status
       run: |
-        docker exec app-test apt-get update && apt-get install -y curl
+        docker ps
+        docker logs app-test
     
-    - name: Test application health
+    - name: Test health endpoint
       run: |
-        docker exec app-test curl -f http://localhost:8000/health || exit 1
+        docker exec app-test python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()" || exit 1
     
-    - name: Test application endpoint
+    - name: Test main endpoint
       run: |
-        docker exec app-test curl -f http://localhost:8000/ || exit 1
+        docker exec app-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:8000/'); assert response.getcode() == 200; print('Main page OK')" || exit 1
+    
+    - name: Test stats endpoint
+      run: |
+        docker exec app-test python -c "import urllib.request, json; data = urllib.request.urlopen('http://localhost:8000/stats').read(); print('Stats OK:', data)" || exit 1
+    
+    - name: Test counter increment
+      run: |
+        docker exec app-test python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/').read(); data = urllib.request.urlopen('http://localhost:8000/stats').read(); print('Counter test OK')" || exit 1
     
     - name: Cleanup
       if: always()
