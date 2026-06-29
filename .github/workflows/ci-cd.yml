@@ -113,4 +113,4 @@ jobs:
         echo "Using docker-compose.prod.yml"
         echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
         # Здесь можно добавить реальные команды деплоя
-        # Например: scp, ssh, kubectl и т.д.
+        # Например: scp, ssh, kubectl и т.д."# CI/CD pipeline configuration" 
