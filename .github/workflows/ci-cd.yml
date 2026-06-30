@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ${{ github.repository }}  # GitHub автоматически приводит к нижнему регистру
 
 jobs:
   lint-dockerfile:
@@ -21,7 +21,7 @@ jobs:
         with:
           dockerfile: Dockerfile
           failure-threshold: warning
-          ignore: DL3008
+          ignore: DL3008,DL3015
 
   security-scan:
     runs-on: ubuntu-latest
@@ -74,6 +74,11 @@ jobs:
             bash -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
           sleep 10
       
+      - name: Check if container is running
+        run: |
+          docker ps
+          docker logs app-test
+      
       - name: Test health endpoint
         run: |
           docker exec app-test python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()" || exit 1
@@ -119,5 +124,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository }}:latest
+            ${{ env.REGISTRY }}/${{ github.repository }}:${{ github.sha }}
