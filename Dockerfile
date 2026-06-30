@@ -11,10 +11,8 @@ RUN apt-get update && apt-get install -y \
 # Копируем только requirements.txt сначала (для кэширования)
 COPY app/requirements.txt .
 
-# Устанавливаем зависимости без кэша и с оптимизациями
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --upgrade --no-deps --force-reinstall uvicorn
+# Устанавливаем зависимости без кэша
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем alembic файлы
 COPY alembic.ini .
