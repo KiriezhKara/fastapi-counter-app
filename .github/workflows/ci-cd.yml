@@ -15,8 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
-      - name: Run Hadolint (Dockerfile linter)
+      - name: Run Hadolint
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
@@ -27,15 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
-      - name: Build Docker image for scanning
+      - name: Build image for scanning
         uses: docker/build-push-action@v4
         with:
           context: .
           load: true
           tags: app:scan
-      
-      - name: Run Trivy vulnerability scanner
+      - name: Run Trivy
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'app:scan'
@@ -48,10 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-      
       - name: Build Docker image
         uses: docker/build-push-action@v4
         with:
@@ -59,176 +54,123 @@ jobs:
           load: true
           tags: app:test
           no-cache: true
-      
-      - name: Start services for testing
+      - name: Start services
         run: |
           docker compose -f docker-compose.yml up -d postgres redis
           sleep 10
-      
       - name: Run application
         run: |
-          docker run -d --name app-test \
-            --network fastapi-network \
-            -e DB_HOST=postgres \
-            -e REDIS_HOST=redis \
-            app:test \
-            bash -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+          docker run -d --name app-test --network fastapi-network -e DB_HOST=postgres -e REDIS_HOST=redis app:test bash -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
           sleep 15
-      
       - name: Check container status
         run: |
           echo "=== CONTAINER STATUS ==="
           docker ps -a
           echo "=== CONTAINER LOGS ==="
           docker logs app-test || true
-          echo "=== END LOGS ==="
-      
-      - name: Test health endpoint
+      - name: Test health
         run: |
           docker exec app-test python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()" || exit 1
-      
-      - name: Test main endpoint
+      - name: Test main
         run: |
           docker exec app-test python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/').read()" || exit 1
-      
-      - name: Test stats endpoint
+      - name: Test stats
         run: |
           docker exec app-test python -c "import urllib.request, json; data = urllib.request.urlopen('http://localhost:8000/stats').read(); print('Stats OK')" || exit 1
-      
       - name: Cleanup
         if: always()
         run: |
           docker compose -f docker-compose.yml down
           docker rm -f app-test || true
 
-  # ================================================================
-  # ЗАДАНИЕ 4: СБОРКА АРТЕФАКТОВ И ТЕГИРОВАНИЕ
-  # ================================================================
   build-and-push:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
     permissions:
       contents: read
       packages: write
-    
     steps:
       - uses: actions/checkout@v3
-      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-      
-      - name: Log in to Container Registry
+      - name: Log in to Registry
         uses: docker/login-action@v2
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Set Docker tags
+      - name: Set tags
         id: tags
         run: |
           SHA=$(git rev-parse --short HEAD)
-          echo "📌 Определение тегов..."
-          
           if [[ "${{ github.ref_name }}" == "main" ]]; then
-            echo "✅ Ветка main → теги: stable, $SHA"
             echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$SHA" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref_name }}" == feature/* ]]; then
             BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/feature\///')
-            echo "✅ Ветка feature → тег: dev-$BRANCH_NAME"
             echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-$BRANCH_NAME" >> $GITHUB_OUTPUT
           else
-            echo "✅ Другая ветка → тег: ${{ github.ref_name }}"
             echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
-      
       - name: Check image size
-        id: size
         run: |
-          echo "📊 Сборка образа для проверки размера..."
           docker build -t app:temp .
-          
           SIZE=$(docker images app:temp --format "{{.Size}}" | grep -o '^[0-9]*' | head -1)
-          echo "📊 Размер образа: ${SIZE} МБ"
-          
+          echo "Image size: ${SIZE}MB"
           if [ $SIZE -gt 300 ]; then
-            echo "❌ ОШИБКА: Размер образа ${SIZE} МБ превышает лимит 300 МБ!"
+            echo "❌ Image size exceeds 300MB!"
             exit 1
           fi
-          echo "✅ Размер образа ${SIZE} МБ в пределах лимита (300 МБ)"
-          
-          echo "size=${SIZE}" >> $GITHUB_OUTPUT
-      
-      - name: Build and push Docker image with smart tags
+          echo "✅ Image size OK"
+      - name: Build and push
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
           tags: ${{ steps.tags.outputs.tags }}
 
-  # ================================================================
-  # ЗАДАНИЕ 5: CD (Continuous Delivery) и окружения
-  # ================================================================
-    deploy:
+  deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
     steps:
       - uses: actions/checkout@v3
-      
       - name: Check secrets
         run: |
-          echo "🔑 Проверка секретов..."
+          echo "🔑 Checking secrets..."
           if [ -z "${{ secrets.SERVER_HOST }}" ]; then
-            echo "⚠️ SERVER_HOST secret not set, using localhost"
+            echo "⚠️ SERVER_HOST not set"
           fi
-      
-      - name: Deploy to server (SSH simulation)
+      - name: Deploy
         run: |
-          echo "📦 Deploying to server..."
-          echo "Server: ${{ secrets.SERVER_HOST || 'localhost' }}"
-          echo "User: ${{ secrets.SERVER_USER || 'user' }}"
+          echo "📦 Deploying..."
           echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable"
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable || echo "Image not found, using local"
-          echo "✅ Deploy completed"
-      
-      - name: Run application for health check
-        id: run_app
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable || echo "Image not found"
+      - name: Run app for health check
         run: |
-          echo "🚀 Запуск приложения для проверки..."
+          echo "🚀 Running app..."
           docker run -d --name deploy-app -p 8000:8000 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable || docker run -d --name deploy-app -p 8000:8000 z1-app
           sleep 10
-          echo "=== СТАТУС КОНТЕЙНЕРА ==="
           docker ps -a
-          echo "=== ЛОГИ КОНТЕЙНЕРА ==="
           docker logs deploy-app || true
-      
-      - name: Health check after deploy
+      - name: Health check
         id: healthcheck
         run: |
-          echo "🔍 Проверка здоровья..."
+          echo "🔍 Health check..."
           curl -f http://localhost:8000/health || exit 1
-          echo "✅ Health check passed"
-      
-      - name: Rollback on failure
+      - name: Rollback
         if: failure() && steps.healthcheck.outcome == 'failure'
         run: |
-          echo "🔄 Rolling back to previous version..."
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:previous || echo "No previous version, using latest"
-          echo "✅ Rollback completed"
-      
+          echo "🔄 Rolling back..."
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:previous || echo "No previous version"
       - name: Cleanup
         if: always()
         run: |
           docker rm -f deploy-app || true
-      
-      - name: Deployment result
+      - name: Result
         run: |
           if [ ${{ steps.healthcheck.outcome }} == 'success' ]; then
             echo "✅ Deployment successful!"
           else
-            echo "❌ Deployment failed, rollback performed"
+            echo "❌ Deployment failed"
             exit 1
           fi
