@@ -58,7 +58,7 @@ jobs:
           context: .
           load: true
           tags: app:test
-          no-cache: true  # <-- ДОБАВЛЕНО
+          no-cache: true
       
       - name: Start services for testing
         run: |
@@ -101,6 +101,9 @@ jobs:
           docker compose -f docker-compose.yml down
           docker rm -f app-test || true
 
+  # ================================================================
+  # ЗАДАНИЕ 4: СБОРКА АРТЕФАКТОВ И ТЕГИРОВАНИЕ
+  # ================================================================
   build-and-push:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -122,11 +125,54 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Build and push Docker image
+      # --------------------------------------------------------------
+      # 1. УМНЫЙ ТЕГ: stable для main, dev-{branch} для feature
+      # --------------------------------------------------------------
+      - name: Set Docker tags
+        id: tags
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          echo "📌 Определение тегов..."
+          
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "✅ Ветка main → теги: stable, $SHA"
+            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$SHA" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_name }}" == feature/* ]]; then
+            BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/feature\///')
+            echo "✅ Ветка feature → тег: dev-$BRANCH_NAME"
+            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-$BRANCH_NAME" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Другая ветка → тег: ${{ github.ref_name }}"
+            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+      
+      # --------------------------------------------------------------
+      # 2. ПРОВЕРКА РАЗМЕРА ОБРАЗА (не более 300 МБ)
+      # --------------------------------------------------------------
+      - name: Check image size
+        id: size
+        run: |
+          echo "📊 Сборка образа для проверки размера..."
+          docker build -t app:temp .
+          
+          SIZE=$(docker images app:temp --format "{{.Size}}" | grep -o '^[0-9]*' | head -1)
+          echo "📊 Размер образа: ${SIZE} МБ"
+          
+          if [ $SIZE -gt 300 ]; then
+            echo "❌ ОШИБКА: Размер образа ${SIZE} МБ превышает лимит 300 МБ!"
+            exit 1
+          fi
+          echo "✅ Размер образа ${SIZE} МБ в пределах лимита (300 МБ)"
+          
+          # Сохраняем размер для информации
+          echo "size=${SIZE}" >> $GITHUB_OUTPUT
+      
+      # --------------------------------------------------------------
+      # 3. ПУБЛИКАЦИЯ ОБРАЗА С УМНЫМИ ТЕГАМИ
+      # --------------------------------------------------------------
+      - name: Build and push Docker image with smart tags
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          tags: ${{ steps.tags.outputs.tags }}
