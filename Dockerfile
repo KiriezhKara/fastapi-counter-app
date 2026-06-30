@@ -2,24 +2,32 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Устанавливаем только необходимые пакеты
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
+# Копируем только requirements.txt сначала (для кэширования)
 COPY app/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Устанавливаем зависимости без кэша и с оптимизациями
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --upgrade --no-deps --force-reinstall uvicorn
 
 # Копируем alembic файлы
 COPY alembic.ini .
 COPY migrations/ ./migrations/
 
+# Копируем приложение
 COPY app/ ./app/
 
 # Копируем скрипт запуска
 COPY app/startup.sh .
 RUN chmod +x startup.sh
 
+# Создаем пользователя
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
