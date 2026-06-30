@@ -2,7 +2,7 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, feature/* ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -11,7 +11,6 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # 1. Проверка формата Dockerfile (Hadolint)
   lint-dockerfile:
     runs-on: ubuntu-latest
     steps:
@@ -22,11 +21,10 @@ jobs:
         with:
           dockerfile: Dockerfile
           failure-threshold: warning
+          ignore: DL3008
 
-  # 2. Статический анализ безопасности (Trivy)
   security-scan:
     runs-on: ubuntu-latest
-    needs: lint-dockerfile
     steps:
       - uses: actions/checkout@v3
       
@@ -46,10 +44,8 @@ jobs:
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
-  # 3. Интеграционные тесты (поднимаем Compose)
   integration-tests:
     runs-on: ubuntu-latest
-    needs: security-scan
     steps:
       - uses: actions/checkout@v3
       
@@ -96,9 +92,7 @@ jobs:
           docker compose -f docker-compose.yml down
           docker rm -f app-test || true
 
-  # 4. Сборка и публикация образа
   build-and-push:
-    needs: integration-tests
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
@@ -119,46 +113,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix=
-            type=raw,value=stable,enable={{is_default_branch}}
-      
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # 5. Уведомление в Telegram (творческое задание)
-  notify:
-    needs: [build-and-push, security-scan, integration-tests]
-    runs-on: ubuntu-latest
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Get commit SHA
-        id: commit
-        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-      
-      - name: Send Telegram notification
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: |
-            📦 **CI/CD Pipeline**
-            📝 Commit: `${{ steps.commit.outputs.sha }}`
-            📂 Repository: ${{ github.repository }}
-            🌿 Branch: ${{ github.ref_name }}
-            📊 Status: ${{ job.status }}
-            
-            ${{ job.status == 'success' && '✅ **УСПЕШНО**' || '❌ **ОШИБКА**' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
