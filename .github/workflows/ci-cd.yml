@@ -125,9 +125,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      # --------------------------------------------------------------
-      # 1. УМНЫЙ ТЕГ: stable для main, dev-{branch} для feature
-      # --------------------------------------------------------------
       - name: Set Docker tags
         id: tags
         run: |
@@ -146,9 +143,6 @@ jobs:
             echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
       
-      # --------------------------------------------------------------
-      # 2. ПРОВЕРКА РАЗМЕРА ОБРАЗА (не более 300 МБ)
-      # --------------------------------------------------------------
       - name: Check image size
         id: size
         run: |
@@ -164,15 +158,67 @@ jobs:
           fi
           echo "✅ Размер образа ${SIZE} МБ в пределах лимита (300 МБ)"
           
-          # Сохраняем размер для информации
           echo "size=${SIZE}" >> $GITHUB_OUTPUT
       
-      # --------------------------------------------------------------
-      # 3. ПУБЛИКАЦИЯ ОБРАЗА С УМНЫМИ ТЕГАМИ
-      # --------------------------------------------------------------
       - name: Build and push Docker image with smart tags
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+
+  # ================================================================
+  # ЗАДАНИЕ 5: CD (Continuous Delivery) и окружения
+  # ================================================================
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Check secrets
+        run: |
+          echo "🔑 Проверка секретов..."
+          if [ -z "${{ secrets.SERVER_HOST }}" ]; then
+            echo "⚠️ SERVER_HOST secret not set, using localhost"
+          fi
+          if [ -z "${{ secrets.SERVER_USER }}" ]; then
+            echo "⚠️ SERVER_USER secret not set, using user"
+          fi
+      
+      - name: Deploy to server (SSH simulation)
+        run: |
+          echo "📦 Deploying to server..."
+          echo "Server: ${{ secrets.SERVER_HOST || 'localhost' }}"
+          echo "User: ${{ secrets.SERVER_USER || 'user' }}"
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable"
+          
+          # Симуляция деплоя через SSH
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable || echo "Image not found, using local"
+          echo "✅ Deploy completed"
+      
+      - name: Health check after deploy
+        id: healthcheck
+        run: |
+          echo "🔍 Checking health..."
+          sleep 5
+          curl -f http://localhost:8000/health || exit 1
+          echo "✅ Health check passed"
+      
+      - name: Rollback on failure
+        if: failure() && steps.healthcheck.outcome == 'failure'
+        run: |
+          echo "🔄 Rolling back to previous version..."
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:previous || echo "No previous version, using latest"
+          echo "✅ Rollback completed"
+      
+      - name: Deployment result
+        run: |
+          if [ ${{ steps.healthcheck.outcome }} == 'success' ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed, rollback performed"
+            exit 1
+          fi
