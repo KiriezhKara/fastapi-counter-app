@@ -134,38 +134,64 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v3
+      
       - name: Check secrets
         run: |
           echo "🔑 Checking secrets..."
           if [ -z "${{ secrets.SERVER_HOST }}" ]; then
             echo "⚠️ SERVER_HOST not set"
           fi
+      
       - name: Deploy
         run: |
           echo "📦 Deploying..."
           echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable"
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable || echo "Image not found"
+      
       - name: Run app for health check
         run: |
-          echo "🚀 Running app..."
-          docker run -d --name deploy-app -p 8000:8000 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable || docker run -d --name deploy-app -p 8000:8000 z1-app
-          sleep 10
+          echo "🚀 Запуск приложения для проверки..."
+          echo "Попытка запуска из registry..."
+          docker run -d --name deploy-app \
+            --network fastapi-network \
+            -e DB_HOST=postgres \
+            -e REDIS_HOST=redis \
+            -p 8000:8000 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable || {
+            echo "❌ Не удалось запустить из registry, пробуем локальный образ..."
+            docker run -d --name deploy-app \
+              --network fastapi-network \
+              -e DB_HOST=postgres \
+              -e REDIS_HOST=redis \
+              -p 8000:8000 \
+              z1-app
+          }
+          echo "⏳ Ожидание 15 секунд..."
+          sleep 15
+          echo ""
+          echo "=== СТАТУС КОНТЕЙНЕРА ==="
           docker ps -a
-          docker logs deploy-app || true
+          echo ""
+          echo "=== ЛОГИ КОНТЕЙНЕРА ==="
+          docker logs deploy-app || echo "❌ Контейнер не запустился или нет логов"
+      
       - name: Health check
         id: healthcheck
         run: |
           echo "🔍 Health check..."
           curl -f http://localhost:8000/health || exit 1
+      
       - name: Rollback
         if: failure() && steps.healthcheck.outcome == 'failure'
         run: |
           echo "🔄 Rolling back..."
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:previous || echo "No previous version"
+      
       - name: Cleanup
         if: always()
         run: |
           docker rm -f deploy-app || true
+      
       - name: Result
         run: |
           if [ ${{ steps.healthcheck.outcome }} == 'success' ]; then
