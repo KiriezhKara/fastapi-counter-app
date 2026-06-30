@@ -184,9 +184,6 @@ jobs:
           if [ -z "${{ secrets.SERVER_HOST }}" ]; then
             echo "⚠️ SERVER_HOST secret not set, using localhost"
           fi
-          if [ -z "${{ secrets.SERVER_USER }}" ]; then
-            echo "⚠️ SERVER_USER secret not set, using user"
-          fi
       
       - name: Deploy to server (SSH simulation)
         run: |
@@ -194,16 +191,19 @@ jobs:
           echo "Server: ${{ secrets.SERVER_HOST || 'localhost' }}"
           echo "User: ${{ secrets.SERVER_USER || 'user' }}"
           echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable"
-          
-          # Симуляция деплоя через SSH
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable || echo "Image not found, using local"
           echo "✅ Deploy completed"
+      
+      - name: Run application for health check
+        run: |
+          echo "🚀 Запуск приложения для проверки..."
+          docker run -d --name deploy-app -p 8000:8000 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable || docker run -d --name deploy-app -p 8000:8000 z1-app
+          sleep 15
       
       - name: Health check after deploy
         id: healthcheck
         run: |
-          echo "🔍 Checking health..."
-          sleep 5
+          echo "🔍 Проверка здоровья..."
           curl -f http://localhost:8000/health || exit 1
           echo "✅ Health check passed"
       
@@ -213,6 +213,11 @@ jobs:
           echo "🔄 Rolling back to previous version..."
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:previous || echo "No previous version, using latest"
           echo "✅ Rollback completed"
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f deploy-app || true
       
       - name: Deployment result
         run: |
