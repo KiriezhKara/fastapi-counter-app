@@ -170,7 +170,7 @@ jobs:
   # ================================================================
   # ЗАДАНИЕ 5: CD (Continuous Delivery) и окружения
   # ================================================================
-  deploy:
+    deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -195,10 +195,15 @@ jobs:
           echo "✅ Deploy completed"
       
       - name: Run application for health check
+        id: run_app
         run: |
           echo "🚀 Запуск приложения для проверки..."
           docker run -d --name deploy-app -p 8000:8000 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable || docker run -d --name deploy-app -p 8000:8000 z1-app
-          sleep 15
+          sleep 10
+          echo "=== СТАТУС КОНТЕЙНЕРА ==="
+          docker ps -a
+          echo "=== ЛОГИ КОНТЕЙНЕРА ==="
+          docker logs deploy-app || true
       
       - name: Health check after deploy
         id: healthcheck
