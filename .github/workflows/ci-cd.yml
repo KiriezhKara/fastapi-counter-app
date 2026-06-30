@@ -44,7 +44,7 @@ jobs:
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
-  integration-tests:
+   integration-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -74,10 +74,13 @@ jobs:
             bash -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
           sleep 15
       
-      - name: Check if container is running
+      - name: Check container status
         run: |
+          echo "=== CONTAINER STATUS ==="
           docker ps -a
+          echo "=== CONTAINER LOGS ==="
           docker logs app-test || true
+          echo "=== END LOGS ==="
       
       - name: Test health endpoint
         run: |
