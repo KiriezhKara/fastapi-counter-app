@@ -58,6 +58,7 @@ jobs:
           context: .
           load: true
           tags: app:test
+          no-cache: true  # <-- ДОБАВЛЕНО
       
       - name: Start services for testing
         run: |
