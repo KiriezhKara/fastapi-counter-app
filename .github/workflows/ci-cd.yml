@@ -148,9 +148,15 @@ jobs:
           echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable"
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable || echo "Image not found"
       
+      - name: Create network for testing
+        run: |
+          docker network create fastapi-network || echo "Network already exists"
+      
       - name: Run app for health check
         run: |
           echo "🚀 Запуск приложения для проверки..."
+          echo "Создаём сеть для контейнера..."
+          docker network create fastapi-network 2>/dev/null || true
           echo "Попытка запуска из registry..."
           docker run -d --name deploy-app \
             --network fastapi-network \
