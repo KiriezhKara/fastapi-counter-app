@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: kiriezhkara/fastapi-counter-app  # <-- ВСЁ В НИЖНЕМ РЕГИСТРЕ
+  IMAGE_NAME: kiriezhkara/fastapi-counter-app
 
 jobs:
   lint-dockerfile:
@@ -40,11 +40,11 @@ jobs:
         with:
           image-ref: 'app:scan'
           format: 'table'
-          exit-code: '0'  # <-- Не останавливаем пайплайн из-за уязвимостей
+          exit-code: '0'
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
-   integration-tests:
+  integration-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
